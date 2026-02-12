@@ -6,6 +6,7 @@ A secure sandbox for running AI coding agents (Claude Code, Codex, Aider) and ar
 sandbox claude    # Claude Code in full auto mode
 sandbox codex     # OpenAI Codex in full auto mode
 sandbox aider     # Aider
+sandbox cursor    # Open Cursor IDE in the sandbox
 sandbox shell     # Interactive shell — do whatever you want
 ```
 
@@ -72,6 +73,9 @@ sandbox codex
 
 # Aider — requires OPENAI_API_KEY or ANTHROPIC_API_KEY
 sandbox aider
+
+# Cursor IDE — opens in devcontainer
+sandbox cursor
 ```
 
 ### Run on Your Own Project

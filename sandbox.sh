@@ -14,6 +14,7 @@
 #   ./sandbox.sh claude                    # Run Claude Code
 #   ./sandbox.sh codex                     # Run OpenAI Codex
 #   ./sandbox.sh aider                     # Run Aider
+#   ./sandbox.sh cursor                    # Open Cursor IDE in sandbox
 #   ./sandbox.sh shell                     # Interactive shell
 #   ./sandbox.sh run <any-command>         # Run arbitrary command in sandbox
 #   ./sandbox.sh build                     # Build/rebuild the sandbox image
@@ -363,10 +364,12 @@ Agents:
   claude    Claude Code (Anthropic) — requires ANTHROPIC_API_KEY
   codex     OpenAI Codex CLI        — requires OPENAI_API_KEY
   aider     Aider                   — requires OPENAI_API_KEY or ANTHROPIC_API_KEY
+  cursor    Open Cursor IDE in the devcontainer sandbox
   shell     Interactive zsh shell
 
 Examples:
   ./sandbox.sh claude                         # Launch Claude Code
+  ./sandbox.sh cursor                         # Open Cursor in sandbox
   ./sandbox.sh shell                          # Interactive sandbox shell
   SANDBOX_MEMORY=16g ./sandbox.sh claude      # Claude with 16GB RAM
   SANDBOX_NETWORK=none ./sandbox.sh shell     # Fully airgapped shell
@@ -397,6 +400,37 @@ case "${1:-help}" in
     run_agent aider \
       '' \
       uvx --from aider-chat aider
+    ;;
+
+  cursor)
+    # Open Cursor IDE attached to the devcontainer
+    if ! command -v cursor &>/dev/null; then
+      err "Cursor IDE not found. Install it from https://cursor.com"
+      err "Then enable the 'cursor' shell command via:"
+      err "  Cursor > Cmd+Shift+P > 'Install cursor command in PATH'"
+      exit 1
+    fi
+    ensure_image
+
+    # Ensure the Dev Containers extension is installed
+    cursor --install-extension ms-vscode-remote.remote-containers 2>/dev/null || true
+
+    echo ""
+    ok "Opening Cursor..."
+    echo ""
+    log "  When Cursor opens, it will detect the devcontainer config."
+    log "  Click 'Reopen in Container' in the notification that appears."
+    log ""
+    log "  If you miss the notification:"
+    log "    1. Press Cmd+Shift+P"
+    log "    2. Type 'Reopen in Container'"
+    log "    3. Select 'Dev Containers: Reopen in Container'"
+    log ""
+    log "  First launch builds the image inside Cursor (takes a few minutes)."
+    log "  Subsequent launches are instant."
+    echo ""
+
+    cursor "${WORKDIR}"
     ;;
 
   shell)
