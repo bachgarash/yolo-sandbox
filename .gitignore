@@ -1,0 +1,30 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Scratch / experiments
+scratch/
+tmp/
+
+# Dependencies (project-specific, not sandbox)
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# Build artifacts
+dist/
+build/
+.cache/
+.next/
+target/
+
+# Environment
+.env
+.env.local
+.env.*.local

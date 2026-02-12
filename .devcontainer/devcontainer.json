@@ -1,0 +1,84 @@
+{
+  "name": "YOLO Dev Sandbox",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "remoteUser": "sandbox",
+  "containerUser": "sandbox",
+
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+  "workspaceFolder": "/workspace",
+
+  "runArgs": [
+    "--cap-drop=ALL",
+    "--cap-add=NET_BIND_SERVICE",
+    "--cap-add=SETUID",
+    "--cap-add=SETGID",
+    "--cap-add=DAC_OVERRIDE",
+    "--cap-add=AUDIT_WRITE",
+    "--cap-add=CHOWN",
+    "--cap-add=FOWNER",
+    "--memory=8g",
+    "--memory-swap=8g",
+    "--cpus=4",
+    "--pids-limit=512",
+    "--hostname=yolo-sandbox"
+  ],
+
+  "containerEnv": {
+    "YOLO_SANDBOX": "true",
+    "EDITOR": "code --wait",
+    "VISUAL": "code --wait",
+    "SHELL": "/bin/zsh",
+    "TERM": "xterm-256color"
+  },
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "terminal.integrated.profiles.linux": {
+          "zsh": {
+            "path": "/bin/zsh"
+          }
+        },
+        "editor.formatOnSave": true,
+        "editor.bracketPairColorization.enabled": true,
+        "files.trimTrailingWhitespace": true,
+        "files.insertFinalNewline": true
+      },
+      "extensions": [
+        "streetsidesoftware.code-spell-checker",
+        "editorconfig.editorconfig",
+        "usernamehw.errorlens",
+        "eamodio.gitlens",
+        "mhutchie.git-graph",
+        "ms-python.python",
+        "golang.go",
+        "rust-lang.rust-analyzer",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "christian-kohler.path-intellisense",
+        "ms-azuretools.vscode-docker",
+        "redhat.vscode-yaml",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  },
+
+  "onCreateCommand": "bash .devcontainer/scripts/on-create.sh",
+  "postStartCommand": "echo 'YOLO Sandbox is ready. Go wild.'",
+
+  "forwardPorts": [3000, 5173, 8000, 8080, 9000],
+  "portsAttributes": {
+    "3000": { "label": "App (3000)", "onAutoForward": "notify" },
+    "5173": { "label": "Vite (5173)", "onAutoForward": "notify" },
+    "8000": { "label": "API (8000)", "onAutoForward": "notify" },
+    "8080": { "label": "Alt HTTP (8080)", "onAutoForward": "notify" },
+    "9000": { "label": "Debug (9000)", "onAutoForward": "notify" }
+  },
+
+  "features": {}
+}

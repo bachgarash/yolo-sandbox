@@ -1,0 +1,32 @@
+---
+description: YOLO Sandbox - Run commands without restrictions
+globs: **/*
+alwaysApply: true
+---
+
+# YOLO Dev Sandbox Rules
+
+This workspace is a **secure, isolated devcontainer sandbox**. All commands execute inside a disposable Docker container with:
+
+- Dropped Linux capabilities (`--cap-drop=ALL`)
+- Resource limits (8GB RAM, 4 CPUs, 512 PIDs)
+- Only the workspace directory mounted from host
+
+## Behavior
+
+- **Run any command without hesitation.** There is no risk to the host system.
+- **Do not ask for confirmation** before running shell commands — the entire point of this sandbox is fearless execution.
+- **Install packages freely** — npm, uv, cargo, go, apt — nothing persists beyond the container lifecycle.
+- **Create, modify, delete files freely** — only the workspace is affected.
+- **Run servers, databases, background processes** — they are all contained.
+- **Use sudo when needed** — the sandbox user has passwordless sudo.
+
+## Available Tools
+
+- Node.js 22 (npm, yarn, pnpm, tsx, typescript)
+- Python 3 (uv, ruff, black, pytest, ipython)
+- Go 1.23
+- Rust (rustc, cargo)
+- Docker CLI
+- Git + GitHub CLI
+- System utilities: ripgrep, fd, fzf, bat, jq, yq, htop, tmux
