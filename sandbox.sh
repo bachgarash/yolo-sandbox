@@ -165,10 +165,7 @@ install_agent() {
       fi
       ;;
     aider)
-      if ! command -v aider &>/dev/null; then
-        log "Installing Aider..."
-        uv tool install aider-chat
-      fi
+      # aider runs via uvx, no install needed
       ;;
   esac
 }
@@ -398,8 +395,8 @@ case "${1:-help}" in
 
   aider)
     run_agent aider \
-      'command -v aider &>/dev/null || uv tool install aider-chat' \
-      aider
+      '' \
+      uvx --from aider-chat aider
     ;;
 
   shell)

@@ -1,12 +1,32 @@
-# yolo-dev
+# yolo-sandbox
 
 A secure sandbox for running AI coding agents (Claude Code, Codex, Aider) and arbitrary commands without risking your host system. One script, zero config.
 
+```bash
+sandbox claude    # Claude Code in full auto mode
+sandbox codex     # OpenAI Codex in full auto mode
+sandbox aider     # Aider
+sandbox shell     # Interactive shell — do whatever you want
 ```
-./sandbox.sh claude    # Claude Code in full auto mode
-./sandbox.sh codex     # OpenAI Codex in full auto mode
-./sandbox.sh aider     # Aider
-./sandbox.sh shell     # Interactive shell — do whatever you want
+
+## Install
+
+Requires [Docker](https://docs.docker.com/get-docker/) running on your machine.
+
+### One-liner
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bachgarash/yolo-sandbox/main/install.sh | bash
+```
+
+This downloads the sandbox, builds the Docker image, and adds `sandbox` to your PATH.
+
+### Manual
+
+```bash
+git clone https://github.com/bachgarash/yolo-sandbox.git
+cd yolo-sandbox
+./sandbox.sh build
 ```
 
 ## Why
@@ -37,54 +57,41 @@ Host filesystem                        Container
 - **Resource limited** — 8GB RAM, 4 CPUs, 512 PIDs (configurable)
 - **Non-root** — runs as `sandbox` user (with sudo for package installs inside container)
 
-## Quick Start
+## Usage
 
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) installed and running
-
-### Setup
-
-```bash
-git clone https://github.com/user/yolo-dev.git
-cd yolo-dev
-./sandbox.sh build    # Build the sandbox image (first time only)
-```
-
-### Run an AI Agent
+### Run AI Agents
 
 ```bash
 # Claude Code — requires ANTHROPIC_API_KEY
 export ANTHROPIC_API_KEY=sk-ant-...
-./sandbox.sh claude
+sandbox claude
 
 # OpenAI Codex — requires OPENAI_API_KEY
 export OPENAI_API_KEY=sk-...
-./sandbox.sh codex
+sandbox codex
 
 # Aider — requires OPENAI_API_KEY or ANTHROPIC_API_KEY
-./sandbox.sh aider
+sandbox aider
 ```
 
 ### Run on Your Own Project
 
 ```bash
-# Point the sandbox at any directory on your machine
-SANDBOX_WORKDIR=~/projects/my-app ./sandbox.sh claude
+SANDBOX_WORKDIR=~/projects/my-app sandbox claude
 ```
 
 ### Interactive Shell
 
 ```bash
-./sandbox.sh shell    # Drops you into a zsh shell inside the sandbox
+sandbox shell
 ```
 
 ### Run Any Command
 
 ```bash
-./sandbox.sh run python3 script.py
-./sandbox.sh run npm test
-./sandbox.sh run make build
+sandbox run python3 script.py
+sandbox run npm test
+sandbox run make build
 ```
 
 ## What's in the Container
@@ -103,30 +110,30 @@ SANDBOX_WORKDIR=~/projects/my-app ./sandbox.sh claude
 
 ## Configuration
 
-All settings are via environment variables:
+All settings via environment variables:
 
-```bash
-SANDBOX_IMAGE=ai-sandbox      # Docker image name
-SANDBOX_MEMORY=8g             # Memory limit
-SANDBOX_CPUS=4                # CPU limit
-SANDBOX_PIDS=512              # Max processes
-SANDBOX_WORKDIR=$(pwd)        # Directory to mount
-SANDBOX_NETWORK=bridge        # Docker network mode ("none" for airgapped)
-SANDBOX_NO_SYNC=false         # Skip auto-sync on exit
-SANDBOX_EXTRA_ARGS=""         # Extra docker run arguments
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SANDBOX_WORKDIR` | `$(pwd)` | Directory to mount in sandbox |
+| `SANDBOX_MEMORY` | `8g` | Memory limit |
+| `SANDBOX_CPUS` | `4` | CPU limit |
+| `SANDBOX_PIDS` | `512` | Max processes |
+| `SANDBOX_NETWORK` | `bridge` | Docker network mode (`none` for airgapped) |
+| `SANDBOX_NO_SYNC` | `false` | Skip auto-sync on exit |
+| `SANDBOX_IMAGE` | `ai-sandbox` | Docker image name |
+| `SANDBOX_EXTRA_ARGS` | | Extra docker run arguments |
 
 Examples:
 
 ```bash
 # More resources
-SANDBOX_MEMORY=16g SANDBOX_CPUS=8 ./sandbox.sh claude
+SANDBOX_MEMORY=16g SANDBOX_CPUS=8 sandbox claude
 
 # Fully airgapped (no network)
-SANDBOX_NETWORK=none ./sandbox.sh shell
+SANDBOX_NETWORK=none sandbox shell
 
 # Skip syncing changes back
-SANDBOX_NO_SYNC=true ./sandbox.sh run rm -rf /   # go wild, nothing happens
+SANDBOX_NO_SYNC=true sandbox run rm -rf /   # go wild, nothing happens
 ```
 
 ## Cursor / VS Code Devcontainer
@@ -135,11 +142,19 @@ This repo also works as a devcontainer. Open the folder in Cursor or VS Code, in
 
 The `.cursor/rules/yolo-sandbox.mdc` rule tells the AI to run commands without asking for confirmation.
 
+## Uninstall
+
+```bash
+rm -rf ~/.yolo-sandbox
+# Remove the PATH line from your ~/.zshrc or ~/.bashrc
+```
+
 ## Project Structure
 
 ```
-yolo-dev/
-├── sandbox.sh                       # Main entry point — run this
+yolo-sandbox/
+├── sandbox.sh                       # Main entry point
+├── install.sh                       # One-liner installer
 ├── .devcontainer/
 │   ├── Dockerfile                   # Container image definition
 │   ├── devcontainer.json            # VS Code / Cursor devcontainer config
@@ -148,13 +163,14 @@ yolo-dev/
 ├── .cursor/rules/
 │   └── yolo-sandbox.mdc            # Cursor AI rule for fearless execution
 ├── .gitignore
+├── LICENSE
 └── README.md
 ```
 
 ## FAQ
 
 **Can `rm -rf /` destroy my files?**
-No. Your files are mounted read-only. We tested this — [it fails with "Read-only file system"](#security-model).
+No. Your files are mounted read-only. We tested it — the kernel blocks it with "Read-only file system".
 
 **Do I lose my work if the container crashes?**
 No. The container is kept after exit (no `--rm`), so `docker cp` can extract your work. The script handles this automatically, even after Ctrl+C.
@@ -163,10 +179,10 @@ No. The container is kept after exit (no `--rm`), so `docker cp` can extract you
 Yes. The script detects non-TTY environments and adapts. Set `SANDBOX_NO_SYNC=true` if you don't need changes back.
 
 **How do I add more tools?**
-Edit `.devcontainer/Dockerfile` and run `./sandbox.sh build`.
+Edit `.devcontainer/Dockerfile` and run `sandbox build`.
 
-**How do I reset the sandbox?**
-Run `./sandbox.sh build` to rebuild from scratch.
+**How do I update?**
+Re-run the install one-liner. It overwrites the existing installation.
 
 ## License
 
