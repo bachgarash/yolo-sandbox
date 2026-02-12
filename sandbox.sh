@@ -5,10 +5,10 @@
 # Secure isolation wrapper for running AI coding agents inside Docker.
 #
 # SECURITY MODEL:
-#   Host workspace is mounted READ-ONLY at /workspace-ro.
-#   On container start, files are copied to /work (writable).
-#   Agents work on /work. The host is NEVER writable from inside.
-#   On exit, changes are automatically synced back to host.
+#   NO host filesystem mounts. Zero. None.
+#   Files are copied IN via 'docker cp' before the agent starts.
+#   Files are copied OUT via 'docker cp' after the agent exits.
+#   The container has no access to the host filesystem at any point.
 #
 # Usage:
 #   ./sandbox.sh claude                    # Run Claude Code
@@ -26,7 +26,7 @@
 #   SANDBOX_MEMORY      - Memory limit (default: 8g)
 #   SANDBOX_CPUS        - CPU limit (default: 4)
 #   SANDBOX_PIDS        - PID limit (default: 512)
-#   SANDBOX_WORKDIR     - Directory to mount as workspace (default: current dir)
+#   SANDBOX_WORKDIR     - Source directory to copy into sandbox (default: current dir)
 #   SANDBOX_EXTRA_ARGS  - Additional docker run arguments
 #   SANDBOX_NETWORK     - Docker network mode (default: bridge)
 #   SANDBOX_NO_SYNC     - Set to "true" to skip auto-sync on exit
@@ -97,28 +97,6 @@ RESOURCE_ARGS=(
   --pids-limit="${PIDS}"
 )
 
-# ---- Entrypoint script (runs INSIDE the container) ----
-ENTRYPOINT_SCRIPT='#!/bin/bash
-set -e
-
-# Copy host files from read-only mount to writable working directory
-if [ -d /workspace-ro ] && [ "$(ls -A /workspace-ro 2>/dev/null)" ]; then
-  rsync -a --quiet /workspace-ro/ /work/
-fi
-
-# Track changes via git, but keep .git outside /work so it never syncs back
-if [ ! -d /tmp/.sandbox-git ]; then
-  git init --quiet --separate-git-dir=/tmp/.sandbox-git /work 2>/dev/null || true
-  rm -f /work/.git 2>/dev/null || true
-  git --git-dir=/tmp/.sandbox-git --work-tree=/work add -A 2>/dev/null || true
-  git --git-dir=/tmp/.sandbox-git --work-tree=/work commit -m "initial snapshot" --quiet 2>/dev/null || true
-fi
-cd /work
-
-# Run the actual command
-exec "$@"
-'
-
 # ---- Functions ----
 
 docker_cmd() {
@@ -171,75 +149,29 @@ install_agent() {
   esac
 }
 
-# Sync changes from a stopped container back to host, then remove it
-sync_and_cleanup() {
+# Create a container, copy files in
+create_sandbox() {
   local dcmd="$1"
   local container_name="$2"
-  local exit_code="$3"
+  local setup_cmd="${3:-}"
+  shift 3
 
-  if [[ "${NO_SYNC}" == "true" ]]; then
-    log "Skipping sync (SANDBOX_NO_SYNC=true)"
-    ${dcmd} rm "${container_name}" &>/dev/null || true
-    return
+  # Build the command that runs inside the container
+  local inner_cmd="cd /work"
+  if [ -n "${setup_cmd}" ]; then
+    inner_cmd="${inner_cmd} && ${setup_cmd}"
   fi
+  inner_cmd="${inner_cmd}"' && exec "$@"'
 
-  # Copy /work from the stopped container back to host
-  # .git is stored in /tmp inside the container, so it never leaks to host
-  if ${dcmd} cp "${container_name}":/work/. "${WORKDIR}/" 2>/dev/null; then
-    ok "Changes synced back to ${WORKDIR}"
-  else
-    warn "Could not sync /work — it may have been deleted inside the container."
-    warn "Your original files on host are safe (read-only mount)."
-  fi
-
-  # Clean up the container
-  ${dcmd} rm "${container_name}" &>/dev/null || true
-}
-
-# Core function: run a command inside the sandbox with auto-sync
-run_sandbox() {
-  local cmd=("$@")
-
-  # If already inside a sandbox, just run directly
-  if [[ "${INSIDE_SANDBOX}" == "true" ]]; then
-    ok "Already inside sandbox — running command directly."
-    exec "${cmd[@]}"
-    return
-  fi
-
-  local dcmd
-  dcmd=$(docker_cmd)
-  ensure_image
-
-  # Generate a unique container name
-  local container_name="sandbox-$(date +%s)-$$"
-
-  # Trap Ctrl+C / SIGTERM — stop the container and still sync before exiting
-  trap '_sandbox_interrupted=true; ${dcmd} stop "${container_name}" 2>/dev/null || true' INT TERM
-
-  log "Starting sandbox..."
-  log "  Image:    ${IMAGE}"
-  log "  Memory:   ${MEMORY}"
-  log "  CPUs:     ${CPUS}"
-  log "  PIDs:     ${PIDS}"
-  log "  Network:  ${NETWORK}"
-  log "  Workdir:  ${WORKDIR} (mounted read-only)"
-  log "  Work:     /work (writable copy — auto-syncs on exit)"
-  log "  Command:  ${cmd[*]}"
-  echo ""
-
-  # Run WITHOUT --rm so we can copy files back after exit
-  local container_exit=0
-  _sandbox_interrupted=false
+  # Create the container (stopped) with no host mounts
   # shellcheck disable=SC2086
-  ${dcmd} run \
+  ${dcmd} create \
     "${TTY_ARGS[@]}" \
     --name "${container_name}" \
     "${SECURITY_ARGS[@]}" \
     "${RESOURCE_ARGS[@]}" \
     --network="${NETWORK}" \
     --hostname=ai-sandbox \
-    -v "${WORKDIR}":/workspace-ro:ro \
     -w /work \
     --entrypoint /bin/bash \
     ${ANTHROPIC_API_KEY:+"-e" "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"} \
@@ -252,25 +184,108 @@ run_sandbox() {
     -e "AI_SANDBOX_CPUS=${CPUS}" \
     ${SANDBOX_EXTRA_ARGS:-} \
     "${IMAGE}" \
-    -c "${ENTRYPOINT_SCRIPT}"' exec "$@"' _ "${cmd[@]}" \
-    || container_exit=$?
+    -c "${inner_cmd}" _ "$@" \
+    > /dev/null
 
-  # Auto-sync changes back to host (runs even after Ctrl+C / crash / OOM)
+  # Copy workspace files into the container (no mount needed)
+  if [ -d "${WORKDIR}" ] && [ "$(ls -A "${WORKDIR}" 2>/dev/null)" ]; then
+    log "Copying files into sandbox..."
+    ${dcmd} cp "${WORKDIR}/." "${container_name}":/work/
+  fi
+}
+
+# Sync files back from container to host, then clean up
+sync_and_cleanup() {
+  local dcmd="$1"
+  local container_name="$2"
+
+  if [[ "${NO_SYNC}" == "true" ]]; then
+    log "Skipping sync (SANDBOX_NO_SYNC=true)"
+    ${dcmd} rm "${container_name}" &>/dev/null || true
+    return
+  fi
+
+  # Copy /work back to host — .git is in /tmp inside container, never leaks
+  if ${dcmd} cp "${container_name}":/work/. "${WORKDIR}/" 2>/dev/null; then
+    ok "Changes synced back to ${WORKDIR}"
+  else
+    warn "Could not sync /work — it may have been deleted inside the container."
+    warn "Your original files on host are untouched (no mounts were used)."
+  fi
+
+  # Clean up
+  ${dcmd} rm "${container_name}" &>/dev/null || true
+}
+
+# ---- Core: run a command inside the sandbox ----
+run_sandbox() {
+  local cmd=("$@")
+
+  if [[ "${INSIDE_SANDBOX}" == "true" ]]; then
+    ok "Already inside sandbox — running command directly."
+    exec "${cmd[@]}"
+    return
+  fi
+
+  local dcmd
+  dcmd=$(docker_cmd)
+  ensure_image
+
+  local container_name="sandbox-$(date +%s)-$$"
+
+  # Trap Ctrl+C / SIGTERM — stop container, still sync
+  trap '_sandbox_interrupted=true; ${dcmd} stop "${container_name}" 2>/dev/null || true' INT TERM
+
+  log "Starting sandbox..."
+  log "  Image:    ${IMAGE}"
+  log "  Memory:   ${MEMORY}"
+  log "  CPUs:     ${CPUS}"
+  log "  PIDs:     ${PIDS}"
+  log "  Network:  ${NETWORK}"
+  log "  Workdir:  ${WORKDIR} (copied in, no mount)"
+  log "  Command:  ${cmd[*]}"
+  echo ""
+
+  # Create container and copy files in
+  _sandbox_interrupted=false
+  create_sandbox "${dcmd}" "${container_name}" "" "${cmd[@]}"
+
+  # Start periodic background sync (every 30s) to avoid losing work
+  _bg_sync_pid=""
+  if [[ "${NO_SYNC}" != "true" ]]; then
+    (
+      while true; do
+        sleep 30
+        ${dcmd} cp "${container_name}":/work/. "${WORKDIR}/" 2>/dev/null || true
+      done
+    ) &
+    _bg_sync_pid=$!
+  fi
+
+  # Start the container and wait for it to finish
+  local container_exit=0
+  ${dcmd} start -a "${container_name}" || container_exit=$?
+
+  # Stop background sync
+  if [ -n "${_bg_sync_pid}" ]; then
+    kill "${_bg_sync_pid}" 2>/dev/null || true
+    wait "${_bg_sync_pid}" 2>/dev/null || true
+  fi
+
+  # Auto-sync on exit
   echo ""
   if [[ "${_sandbox_interrupted}" == "true" ]]; then
     warn "Interrupted! Syncing your work before exiting..."
   else
     log "Container exited (code: ${container_exit}). Syncing changes..."
   fi
-  sync_and_cleanup "${dcmd}" "${container_name}" "${container_exit}"
+  sync_and_cleanup "${dcmd}" "${container_name}"
 
-  # Restore default signal handling
   trap - INT TERM
-
   return ${container_exit}
 }
 
-# Run an agent with install-if-missing logic
+# ---- Core: run an agent with install-if-missing logic ----
 run_agent() {
   local agent="$1"
   shift
@@ -290,7 +305,6 @@ run_agent() {
 
   local container_name="sandbox-${agent}-$(date +%s)-$$"
 
-  # Trap Ctrl+C / SIGTERM — stop container and still sync
   trap '_sandbox_interrupted=true; ${dcmd} stop "${container_name}" 2>/dev/null || true' INT TERM
 
   log "Starting sandbox..."
@@ -299,46 +313,41 @@ run_agent() {
   log "  CPUs:     ${CPUS}"
   log "  PIDs:     ${PIDS}"
   log "  Network:  ${NETWORK}"
-  log "  Workdir:  ${WORKDIR} (mounted read-only)"
-  log "  Work:     /work (writable copy — auto-syncs on exit)"
+  log "  Workdir:  ${WORKDIR} (copied in, no mount)"
   log "  Agent:    ${agent}"
   echo ""
 
-  local container_exit=0
   _sandbox_interrupted=false
-  # shellcheck disable=SC2086
-  ${dcmd} run \
-    "${TTY_ARGS[@]}" \
-    --name "${container_name}" \
-    "${SECURITY_ARGS[@]}" \
-    "${RESOURCE_ARGS[@]}" \
-    --network="${NETWORK}" \
-    --hostname=ai-sandbox \
-    -v "${WORKDIR}":/workspace-ro:ro \
-    -w /work \
-    --entrypoint /bin/bash \
-    ${ANTHROPIC_API_KEY:+"-e" "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"} \
-    ${OPENAI_API_KEY:+"-e" "OPENAI_API_KEY=${OPENAI_API_KEY}"} \
-    ${OPENAI_ORG_ID:+"-e" "OPENAI_ORG_ID=${OPENAI_ORG_ID}"} \
-    ${GITHUB_TOKEN:+"-e" "GITHUB_TOKEN=${GITHUB_TOKEN}"} \
-    ${GH_TOKEN:+"-e" "GH_TOKEN=${GH_TOKEN}"} \
-    -e "AI_SANDBOX=true" \
-    -e "AI_SANDBOX_MEMORY=${MEMORY}" \
-    -e "AI_SANDBOX_CPUS=${CPUS}" \
-    ${SANDBOX_EXTRA_ARGS:-} \
-    "${IMAGE}" \
-    -c "${ENTRYPOINT_SCRIPT}
-${install_cmd}"' exec "$@"' _ "${exec_cmd[@]}" \
-    || container_exit=$?
+  create_sandbox "${dcmd}" "${container_name}" "${install_cmd}" "${exec_cmd[@]}"
 
-  # Auto-sync changes back to host (runs even after Ctrl+C / crash / OOM)
+  # Start periodic background sync (every 30s)
+  _bg_sync_pid=""
+  if [[ "${NO_SYNC}" != "true" ]]; then
+    (
+      while true; do
+        sleep 30
+        ${dcmd} cp "${container_name}":/work/. "${WORKDIR}/" 2>/dev/null || true
+      done
+    ) &
+    _bg_sync_pid=$!
+  fi
+
+  local container_exit=0
+  ${dcmd} start -a "${container_name}" || container_exit=$?
+
+  # Stop background sync
+  if [ -n "${_bg_sync_pid}" ]; then
+    kill "${_bg_sync_pid}" 2>/dev/null || true
+    wait "${_bg_sync_pid}" 2>/dev/null || true
+  fi
+
   echo ""
   if [[ "${_sandbox_interrupted}" == "true" ]]; then
     warn "Interrupted! Syncing your work before exiting..."
   else
     log "Container exited (code: ${container_exit}). Syncing changes..."
   fi
-  sync_and_cleanup "${dcmd}" "${container_name}" "${container_exit}"
+  sync_and_cleanup "${dcmd}" "${container_name}"
 
   trap - INT TERM
   return ${container_exit}
@@ -350,9 +359,9 @@ usage() {
   cat <<'USAGE'
 AI Agent Sandbox Runner — Secure isolation for AI coding agents
 
-SECURITY: Host files are mounted READ-ONLY. Agents work on a writable
-copy inside the container. On exit, changes are auto-synced back to host.
-Your host files can never be deleted from inside the sandbox.
+SECURITY: No host filesystem mounts. Files are copied in/out via
+docker cp. The container cannot access your host filesystem at all.
+Changes are auto-synced back on exit.
 
 Usage:
   ./sandbox.sh <agent>              Run an AI agent inside the sandbox
@@ -403,7 +412,6 @@ case "${1:-help}" in
     ;;
 
   cursor)
-    # Open Cursor IDE attached to the devcontainer
     if ! command -v cursor &>/dev/null; then
       err "Cursor IDE not found. Install it from https://cursor.com"
       err "Then enable the 'cursor' shell command via:"
@@ -412,7 +420,21 @@ case "${1:-help}" in
     fi
     ensure_image
 
-    # Ensure the Dev Containers extension is installed
+    # Copy devcontainer config into the target workspace so Cursor detects it
+    if [ ! -f "${WORKDIR}/.devcontainer/devcontainer.json" ]; then
+      log "Adding .devcontainer/ config to ${WORKDIR}..."
+      mkdir -p "${WORKDIR}/.devcontainer/scripts"
+      cp "${SCRIPT_DIR}/.devcontainer/Dockerfile"           "${WORKDIR}/.devcontainer/Dockerfile"
+      cp "${SCRIPT_DIR}/.devcontainer/devcontainer.json"    "${WORKDIR}/.devcontainer/devcontainer.json"
+      cp "${SCRIPT_DIR}/.devcontainer/scripts/on-create.sh" "${WORKDIR}/.devcontainer/scripts/on-create.sh"
+    fi
+
+    if [ ! -f "${WORKDIR}/.cursor/rules/yolo-sandbox.mdc" ]; then
+      log "Adding .cursor/rules/ for YOLO mode..."
+      mkdir -p "${WORKDIR}/.cursor/rules"
+      cp "${SCRIPT_DIR}/.cursor/rules/yolo-sandbox.mdc" "${WORKDIR}/.cursor/rules/yolo-sandbox.mdc"
+    fi
+
     cursor --install-extension ms-vscode-remote.remote-containers 2>/dev/null || true
 
     echo ""

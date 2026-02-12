@@ -39,18 +39,15 @@ AI coding agents need to run shell commands, install packages, and modify files.
 ```
 Host filesystem                        Container
 ──────────────────                     ──────────────────
-~/my-project/ ────read-only mount───> /workspace-ro/  (cannot write or delete)
+~/my-project/ ──docker cp (in)──────> /work/  (isolated copy, fully disposable)
                                             │
-                                            │ rsync (copy on start)
-                                            ▼
-                                       /work/  (writable copy, fully disposable)
+                                            │  agent works here
                                             │
-                                            │ docker cp (auto-sync on exit)
-                                            ▼
-~/my-project/ <───────────────────── changes copied back
+~/my-project/ <──docker cp (out)───── /work/  (auto-sync on exit)
 ```
 
-- **Host is read-only** — `rm -rf /` inside the container cannot touch your files
+- **Zero host mounts** — the container has no access to your filesystem at all
+- **No macOS permission prompts** — `docker cp` goes through the daemon, not the filesystem
 - **Auto-sync on exit** — code changes are copied back when the agent finishes
 - **Ctrl+C safe** — interrupt at any time, work still syncs before exiting
 - **Crash safe** — container filesystem persists after OOM/crash, sync still runs
