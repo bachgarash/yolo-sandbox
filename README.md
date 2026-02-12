@@ -16,7 +16,7 @@ Requires [Docker](https://docs.docker.com/get-docker/) running on your machine.
 ### One-liner
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/bachgarash/yolo-sandbox/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/bachgarash/yolo-sandbox/refs/heads/main/install.sh | bash
 ```
 
 This downloads the sandbox, builds the Docker image, and adds `sandbox` to your PATH.

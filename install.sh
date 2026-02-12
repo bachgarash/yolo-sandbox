@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # =============================================================================
 # yolo-sandbox installer
-# Usage: curl -fsSL https://raw.githubusercontent.com/bachgarash/yolo-sandbox/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/bachgarash/yolo-sandbox/refs/heads/main/install.sh | bash
 # =============================================================================
 set -euo pipefail
 
 REPO="bachgarash/yolo-sandbox"
 BRANCH="main"
-BASE_URL="https://raw.githubusercontent.com/${REPO}/${BRANCH}"
+BASE_URL="https://raw.githubusercontent.com/${REPO}/refs/heads/${BRANCH}"
 INSTALL_DIR="${YOLO_INSTALL_DIR:-${HOME}/.yolo-sandbox}"
 
 RED='\033[0;31m'
