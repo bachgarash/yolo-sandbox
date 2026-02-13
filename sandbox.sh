@@ -13,7 +13,6 @@
 # Usage:
 #   ./sandbox.sh claude                    # Run Claude Code
 #   ./sandbox.sh codex                     # Run OpenAI Codex
-#   ./sandbox.sh aider                     # Run Aider
 #   ./sandbox.sh cursor                    # Open Cursor IDE in sandbox
 #   ./sandbox.sh shell                     # Interactive shell
 #   ./sandbox.sh run <any-command>         # Run arbitrary command in sandbox
@@ -133,18 +132,21 @@ install_agent() {
   case "${agent}" in
     claude)
       if ! command -v claude &>/dev/null; then
-        log "Installing Claude Code..."
-        sudo npm install -g @anthropic-ai/claude-code
+        log "Installing Node.js via mise + Claude Code..."
+        eval "$(mise activate bash)"
+        mise use -g node@lts
+        eval "$(mise activate bash)"
+        npm install -g @anthropic-ai/claude-code
       fi
       ;;
     codex)
       if ! command -v codex &>/dev/null; then
-        log "Installing Codex..."
-        sudo npm install -g @openai/codex
+        log "Installing Node.js via mise + Codex..."
+        eval "$(mise activate bash)"
+        mise use -g node@lts
+        eval "$(mise activate bash)"
+        npm install -g @openai/codex
       fi
-      ;;
-    aider)
-      # aider runs via uvx, no install needed
       ;;
   esac
 }
@@ -157,7 +159,8 @@ create_sandbox() {
   shift 3
 
   # Build the command that runs inside the container
-  local inner_cmd="cd /work"
+  # Activate mise so tools installed via mise are on PATH
+  local inner_cmd='eval "$(mise activate bash)" && cd /work'
   if [ -n "${setup_cmd}" ]; then
     inner_cmd="${inner_cmd} && ${setup_cmd}"
   fi
@@ -361,29 +364,37 @@ AI Agent Sandbox Runner — Secure isolation for AI coding agents
 
 SECURITY: No host filesystem mounts. Files are copied in/out via
 docker cp. The container cannot access your host filesystem at all.
-Changes are auto-synced back on exit.
+Changes are auto-synced back on exit (+ every 30s in background).
+Uses mise for tool management — install only what you need.
 
 Usage:
-  ./sandbox.sh <agent>              Run an AI agent inside the sandbox
-  ./sandbox.sh run <command...>     Run any command inside the sandbox
-  ./sandbox.sh build                Build/rebuild the sandbox image
-  ./sandbox.sh help                 Show this help
+  sandbox <agent>              Run an AI agent inside the sandbox
+  sandbox run <command...>     Run any command inside the sandbox
+  sandbox build                Build/rebuild the sandbox image
+  sandbox help                 Show this help
 
 Agents:
   claude    Claude Code (Anthropic) — requires ANTHROPIC_API_KEY
   codex     OpenAI Codex CLI        — requires OPENAI_API_KEY
-  aider     Aider                   — requires OPENAI_API_KEY or ANTHROPIC_API_KEY
   cursor    Open Cursor IDE in the devcontainer sandbox
   shell     Interactive zsh shell
 
+Tool Install (inside sandbox):
+  mise use node@22                   Install Node.js 22
+  mise use python@3.12               Install Python 3.12
+  mise use go@1.23                   Install Go 1.23
+  mise use rust@stable               Install Rust
+  mise ls                            List installed tools
+  mise registry                      Browse 900+ available tools
+
 Examples:
-  ./sandbox.sh claude                         # Launch Claude Code
-  ./sandbox.sh cursor                         # Open Cursor in sandbox
-  ./sandbox.sh shell                          # Interactive sandbox shell
-  SANDBOX_MEMORY=16g ./sandbox.sh claude      # Claude with 16GB RAM
-  SANDBOX_NETWORK=none ./sandbox.sh shell     # Fully airgapped shell
-  ./sandbox.sh run python3 my_script.py       # Run a script in sandbox
-  SANDBOX_NO_SYNC=true ./sandbox.sh run ...   # Skip auto-sync on exit
+  sandbox claude                         # Launch Claude Code
+  sandbox cursor                         # Open Cursor in sandbox
+  sandbox shell                          # Interactive sandbox shell
+  SANDBOX_MEMORY=16g sandbox claude      # Claude with 16GB RAM
+  SANDBOX_NETWORK=none sandbox shell     # Fully airgapped shell
+  sandbox run python3 my_script.py       # Run a script in sandbox
+  SANDBOX_NO_SYNC=true sandbox run ...   # Skip auto-sync on exit
 
 USAGE
 }
@@ -395,20 +406,14 @@ case "${1:-help}" in
 
   claude)
     run_agent claude \
-      'command -v claude &>/dev/null || sudo npm install -g @anthropic-ai/claude-code' \
+      'eval "$(mise activate bash)" && mise use -g node@lts && eval "$(mise activate bash)" && (command -v claude &>/dev/null || npm install -g @anthropic-ai/claude-code)' \
       claude --dangerously-skip-permissions
     ;;
 
   codex)
     run_agent codex \
-      'command -v codex &>/dev/null || sudo npm install -g @openai/codex' \
+      'eval "$(mise activate bash)" && mise use -g node@lts && eval "$(mise activate bash)" && (command -v codex &>/dev/null || npm install -g @openai/codex)' \
       codex --full-auto
-    ;;
-
-  aider)
-    run_agent aider \
-      '' \
-      uvx --from aider-chat aider
     ;;
 
   cursor)
