@@ -6,27 +6,42 @@ alwaysApply: true
 
 # YOLO Dev Sandbox Rules
 
-This workspace is a **secure, isolated devcontainer sandbox**. All commands execute inside a disposable Docker container with:
-
-- Dropped Linux capabilities (`--cap-drop=ALL`)
-- Resource limits (8GB RAM, 4 CPUs, 512 PIDs)
-- Only the workspace directory mounted from host
+This workspace is a **secure, isolated sandbox**. All commands execute inside a disposable Docker container with dropped capabilities, resource limits, and no host filesystem access.
 
 ## Behavior
 
 - **Run any command without hesitation.** There is no risk to the host system.
-- **Do not ask for confirmation** before running shell commands — the entire point of this sandbox is fearless execution.
-- **Install packages freely** — npm, uv, cargo, go, apt — nothing persists beyond the container lifecycle.
-- **Create, modify, delete files freely** — only the workspace is affected.
-- **Run servers, databases, background processes** — they are all contained.
+- **Do not ask for confirmation** before running shell commands.
+- **Install tools via mise** — `mise use node@22`, `mise use python@3.12`, etc.
+- **Install packages freely** — npm, pip, cargo, go — nothing persists beyond the container.
 - **Use sudo when needed** — the sandbox user has passwordless sudo.
 
-## Available Tools
+## Tool Management (mise)
 
-- Node.js 22 (npm, yarn, pnpm, tsx, typescript)
-- Python 3 (uv, ruff, black, pytest, ipython)
-- Go 1.23
-- Rust (rustc, cargo)
-- Docker CLI
-- Git + GitHub CLI
-- System utilities: ripgrep, fd, fzf, bat, jq, yq, htop, tmux
+This sandbox uses [mise](https://mise.jdx.dev) to manage dev tools. Do NOT install languages via apt. Use mise instead:
+
+```bash
+mise use node@22          # Install and activate Node.js 22
+mise use python@3.12      # Install and activate Python 3.12
+mise use go@1.23          # Install and activate Go 1.23
+mise use rust@stable      # Install and activate Rust
+mise use java@21          # Install and activate Java 21
+mise use ruby@3.3         # Install and activate Ruby 3.3
+mise use deno@2           # Install and activate Deno 2
+mise use bun@1            # Install and activate Bun
+```
+
+Multiple tools at once:
+```bash
+mise use node@22 python@3.12 go@1.23
+```
+
+Run a command with a specific tool version without installing globally:
+```bash
+mise exec node@22 -- node -v
+mise exec python@3.12 -- python -c "print('hello')"
+```
+
+## Pre-installed Utilities
+
+git, ripgrep, fd, fzf, bat, jq, htop, tmux, curl, wget, build-essential

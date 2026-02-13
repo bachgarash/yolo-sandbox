@@ -8,8 +8,8 @@
   "remoteUser": "sandbox",
   "containerUser": "sandbox",
 
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
-  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/work,type=bind,consistency=cached",
+  "workspaceFolder": "/work",
 
   "runArgs": [
     "--cap-drop=ALL",
@@ -55,13 +55,7 @@
         "usernamehw.errorlens",
         "eamodio.gitlens",
         "mhutchie.git-graph",
-        "ms-python.python",
-        "golang.go",
-        "rust-lang.rust-analyzer",
-        "dbaeumer.vscode-eslint",
-        "esbenp.prettier-vscode",
         "christian-kohler.path-intellisense",
-        "ms-azuretools.vscode-docker",
         "redhat.vscode-yaml",
         "tamasfe.even-better-toml"
       ]
@@ -69,7 +63,7 @@
   },
 
   "onCreateCommand": "bash .devcontainer/scripts/on-create.sh",
-  "postStartCommand": "echo 'YOLO Sandbox is ready. Go wild.'",
+  "postStartCommand": "echo '🚀 YOLO Sandbox is ready — use mise to install tools: mise use node@22 python@3.12'",
 
   "forwardPorts": [3000, 5173, 8000, 8080, 9000],
   "portsAttributes": {
